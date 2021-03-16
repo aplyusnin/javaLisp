@@ -1,2 +1,2 @@
 # javaLisp
-Translator from Lisp to bytecode
+Translator from Lisp to Java bytecode
