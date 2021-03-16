@@ -219,7 +219,7 @@ public class LispTransformer {
 			cc.addMethod(m);*/
 
 //			CtMethod method = cc.getDeclaredMethod("evaluate");
-			lMain.addLocalVariable("a1", pool.get("java.lang.Double"));
+		/*	lMain.addLocalVariable("a1", pool.get("java.lang.Double"));
 			lMain.addLocalVariable("b1", pool.get("java.lang.Double"));
 			lMain.addLocalVariable("c1", pool.get("java.lang.Double"));
 
@@ -246,7 +246,7 @@ public class LispTransformer {
 			args.add("d1");
 			lMain.insertAfter(apply("+", args, "e1"));
 
-			lMain.insertAfter("{System.out.println(e1);}");
+			lMain.insertAfter("{System.out.println(e1);}");*/
 
 			cc.addMethod(lMain);
 
