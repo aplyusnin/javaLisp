@@ -1,10 +1,13 @@
 package ru.nsu.fit.javalisp.parser;
 
-import ru.nsu.fit.javalisp.Token;
+import ru.nsu.fit.javalisp.Node;
 
 import java.io.FileReader;
 import java.util.List;
 
+/**
+ * Abstract class for parsing
+ */
 public abstract class Parser {
 	protected StateMachine machine;
 	protected int line = 1;
@@ -27,5 +30,5 @@ public abstract class Parser {
 		return value;
 	}
 
-	public abstract List<Token> parse() throws Exception;
+	public abstract List<Node> parse() throws Exception;
 }

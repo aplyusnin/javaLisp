@@ -1,62 +1,56 @@
 package ru.nsu.fit.javalisp.translator;
 
 import javassist.*;
+import ru.nsu.fit.javalisp.Node;
 import ru.nsu.fit.javalisp.Pair;
-import ru.nsu.fit.javalisp.Token;
 
+import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Stack;
 
 public class LispTransformer {
 
 	private ClassPool pool;
 
 	private HashMap<String, FunctionDescriptor> nameToDesc;
+	private HashMap<String, Method> keyWordToMethod;
+
+	private Stack<Node> nodes;
 
 	private Context globalContext;
 	private int methods = 0;
 
 	private CtMethod lMain;
+	private CtMethod lConstructor;
 	private int localVars = 0;
+	private int varsInInit = 0;
 
 	public LispTransformer()
 	{
 		pool = ClassPool.getDefault();
-		pool.importPackage("java.util.List");
+		nodes = new Stack<>();
 		nameToDesc = new HashMap<>();
 		globalContext = new Context();
-	}
-
-	private void add(CtClass lispSource) throws Exception
-	{
 		nameToDesc.put("+", new FunctionDescriptor("add", 2));
-		CtMethod method = CtNewMethod.make("private Object add(Object a, Object b) throws Exception {\n" +
-				                                   " return (Object)(new Double(((Double)$1).doubleValue() + ((Double)$2).doubleValue()));\n}", lispSource);
-		lispSource.addMethod(method);
-	}
-
-	private void sub(CtClass lispSource) throws Exception
-	{
 		nameToDesc.put("-", new FunctionDescriptor("sub", 2));
-		CtMethod method = CtNewMethod.make("private Object sub(Object a, Object b) throws Exception {\n" +
-				                                   " return (Object)(new Double(((Double)$1).doubleValue() - ((Double)$2).doubleValue()));\n}", lispSource);
-		//method.insertAt(0, true, "{}");
-		lispSource.addMethod(method);
+		nameToDesc.put("*", new FunctionDescriptor("mul", 2));
+		nameToDesc.put("/", new FunctionDescriptor("div", 2));
+		nameToDesc.put(":float", new FunctionDescriptor("castD", 1));
+		nameToDesc.put(":int", new FunctionDescriptor("castI", 1));
+		nameToDesc.put("not", new FunctionDescriptor("not", 1));
+		nameToDesc.put("and", new FunctionDescriptor("and", 2));
+		nameToDesc.put("or", new FunctionDescriptor("or", 2));
+		nameToDesc.put("=", new FunctionDescriptor("isEqual", 2));
+//		keyWordToMethod.put("if", LispTransformer.class.getDeclaredMethod("generateIf"));
 	}
 
-
-	private void fill(CtClass lispSource) throws Exception
-	{
-		add(lispSource);
-		sub(lispSource);
-	}
-
-	private String apply(String functionName, List<String> args, String var) throws Exception{
+	private String applyFunc(String functionName, List<String> args, String var) throws Exception{
 		FunctionDescriptor desc = nameToDesc.get(functionName);
-		if (args.size() != desc.getArgsCount()) throw new Exception();
+		if (args.size() != desc.getArgsCount()) throw new Exception("Invalid number of params");
 		StringBuilder source = new StringBuilder();
-		source.append("{ " + var + " = " + desc.getName() + "(");
+		source.append("{ ").append(var).append(" = ").append(desc.getName()).append("(");
 		int left = args.size();
 		for (var x : args){
 			left--;
@@ -68,193 +62,314 @@ public class LispTransformer {
 		return source.toString();
 	}
 
-	private CtMethod createMethod(String methodName, List<String> args, Token body, CtClass cc) throws Exception{
-		StringBuilder builder = new StringBuilder();
-		Context context = new Context();
-		int id = 1;
-		builder.append("private Object ").append(methodName).append("(");
-		for (var x : args){
-			context.add(x, id);
-			builder.append(x);
-			id++;
-			if (id < args.size()) builder.append(", ");
+	private String applyJavaFunc(String functionName, List<String> args, String var) throws Exception{
+
+		String type = JavaInvoker.returnValue(functionName.substring(1));
+		var types = JavaInvoker.getArgsTypes(functionName.substring(1));
+		/*if (type.equals("")){
+			throw new Exception("Invalid function name");
+		}*/
+
+		boolean isNew = false;
+		StringBuilder source = new StringBuilder();
+		if (type.equals("double") || type.equals("float")) {
+			source.append("{ ").append(var).append(" = new Double(").append(functionName.substring(1)).append("(");
+			isNew = true;
 		}
-		builder.append("){\nreturn null;\n}");
+		else if (type.equals("int") || type.equals("long")){
+			source.append("{ ").append(var).append(" = new Integer(").append(functionName.substring(1)).append("(");
+			isNew = true;
+		}
+		else {
+			source.append("{ ").append(var).append(" = new Object();\n").append(functionName.substring(1)).append("(");
+		}
 
-		CtMethod method = CtNewMethod.make(builder.toString(), cc);
-
-		return method;
+		//source.append("{ ").append(var).append(" = ").append(functionName.substring(1)).append("(");
+		int left = args.size();
+		for (int i = 0; i < args.size(); i++){
+			left--;
+			if (types != null)
+				source.append("(").append(types.get(i)).append(")");
+			source.append(args.get(i));
+			if (left > 0) source.append(",");
+			source.append(" ");
+		}
+		if (isNew) source.append(")");
+		source.append(");}");
+		return source.toString();
 	}
 
-	private String parseArgs(Token args, Context context) throws Exception {
+	private String parseArgs(Node args, Context context) throws Exception {
 		int id = 1;
 		StringBuilder argsv = new StringBuilder();
-		for (var x : args.getSubTokens()){
+		for (var x : args.getSubNodes()){
 			if (!x.getResult().equals("")) {
-				context.add(x.getResult(), id);
+				context.add(x.getResult(), "$" + id);
 				argsv.append("Object ").append(x.getResult());
 			}
 			else throw new Exception("Invalid function definition");
-			if (id != args.getSubTokens().size()){
+			if (id != args.getSubNodes().size()){
 				argsv.append(", ");
 			}
 			id++;
 		}
 		return argsv.toString();
 	}
-	private Pair<Integer, String> evaluateToken(CtMethod method, Token token, Context context, int created) throws Exception {
+	private Pair<Integer, String> evaluateNode(CtMethod method, Node node, Context context, int created) throws Exception {
 		int cnt = 0;
-		String var;
-		if (token.getType() == Token.Type.INT){
-			var = "LOCAL_VAR_" + created;
-			cnt++;
-			method.addLocalVariable(var, pool.get("java.lang.Object"));
-			method.insertAfter("{ " + var + " = new Double(Double.parseDouble(\"" + token.getResult() + "\"));}");
+		String varb;
+		if (node.getType() == Node.Type.INT){
+			var x = evaluateInt(method, node, context, created);
+			cnt = x.first;
+			varb = x.second;
 		}
-		else if (token.getType() == Token.Type.FLOAT){
-			var = "LOCAL_VAR_" + created;
-			cnt++;
-			method.addLocalVariable(var, pool.get("java.lang.Object"));
-			method.insertAfter("{ " + var + " = new Double(Double.parseDouble(\"" + token.getResult() + "\"));}");
+		else if (node.getType() == Node.Type.FLOAT){
+			var x = evaluateFloat(method, node, context, created);
+			cnt = x.first;
+			varb = x.second;
 		}
-		else if (token.getType() == Token.Type.STRING){
-			var = "LOCAL_VAR_" + created;
-			cnt++;
-			method.addLocalVariable(var, pool.get("java.lang.Object"));
-			method.insertAfter("{ " + var + " = " + token.getResult() + ";}");
+		else if (node.getType() == Node.Type.STRING){
+			var x = evaluateString(method, node, context, created);
+			cnt = x.first;
+			varb = x.second;
 		}
-		else if (token.getType() == Token.Type.VARIABLE){
-			if (context.containsVar(token.getResult())){
-				var = "LOCAL_VAR_" + created;
-				cnt++;
-				method.addLocalVariable(var, pool.get("java.lang.Object"));
-				method.insertAfter("{ " + var + " = " + context.getVar(token.getResult()) + ";}");
-			}
-			else{
-				throw new Exception("Unknown variable: " + token.getResult());
-			}
+		else if (node.getType() == Node.Type.VARIABLE){
+			var x = evaluateVariable(method, node, context, created);
+			cnt = x.first;
+			varb = x.second;
 		}
 		else{
-			if (token.getSubTokens().get(0).getType() != Token.Type.VARIABLE){
-				throw new Exception("Waited for function name, found other type");
-			}
-			if (!nameToDesc.containsKey(token.getSubTokens().get(0).getResult())){
-				throw new Exception("Unknown function name");
-			}
-			FunctionDescriptor desc = nameToDesc.get(token.getSubTokens().get(0).getResult());
-			if (token.getSubTokens().size() != desc.getArgsCount() + 1){
-				throw new Exception("Invalid number of args, expected " + desc.getArgsCount() + ", found " + (token.getSubTokens().size() - 1));
-			}
-			List<String> vars = new LinkedList<>();
-			var = "LOCAL_VAR_" + created;
-			method.addLocalVariable(var, pool.get("java.lang.Object"));
-			cnt++;
-			for (int i = 1; i < token.getSubTokens().size(); i++){
-				var x = evaluateToken(method, token.getSubTokens().get(i), context, created + cnt);
-				cnt += x.first;
-				vars.add(x.second);
-			}
-			String res = apply(token.getSubTokens().get(0).getResult(), vars, var);
-			method.insertAfter(res);
+
+			var x = evaluateComplex(method, node, context, created);
+			cnt = x.first;
+			varb = x.second;
 		}
-		return new Pair<>(cnt, var);
+		return new Pair<>(cnt, varb);
 	}
 
 
-	private CtMethod buildMethod(CtClass cc, Token function) throws Exception {
-		if (function.getSubTokens().size() != 4) throw new Exception("Invalid number of params in ");
-		String name = function.getSubTokens().get(1).getResult();
+	private CtMethod buildMethod(CtClass cc, Node function) throws Exception {
+		if (function.getSubNodes().size() != 4) throw new Exception("Invalid number of params in ");
+		String name = function.getSubNodes().get(1).getResult();
 		if (nameToDesc.containsKey(name)) throw new Exception("Function " + name + " redefinition");
 		Context context = new Context();
-		String args = parseArgs(function.getSubTokens().get(2), context);
+		String args = parseArgs(function.getSubNodes().get(2), context);
 
 		CtMethod method = CtNewMethod.make("public Object method_" + name + "_" + methods + "(" + args + "){\nreturn null;\n}\n", cc);
-		nameToDesc.put(name, new FunctionDescriptor("method_" + name + "_" + methods, function.getSubTokens().get(2).getSubTokens().size()));
+		nameToDesc.put(name, new FunctionDescriptor("method_" + name + "_" + methods, function.getSubNodes().get(2).getSubNodes().size()));
 		cc.addMethod(method);
-		var x = evaluateToken(method, function.getSubTokens().get(3), context, 0);
+		var x = evaluateNode(method, function.getSubNodes().get(3), context, 0);
 		method.insertAfter("{return " + x.second + ";}");
 
 		methods++;
 		return method;
 	}
+	private void createNewVar(Node node, CtClass cc) throws Exception {
+		if (node.getSubNodes().get(1).getType() != Node.Type.VARIABLE) throw new Exception("Invalid word, expected var name");
+		String trueName = node.getSubNodes().get(1).getResult();
+		if (globalContext.containsVar(trueName)) throw new Exception("Variable " + trueName + " is already defined.");
+		var x = evaluateComplex(lConstructor, node.getSubNodes().get(2), new Context(), varsInInit);
+		varsInInit += x.first;
+		String varName = "_GLOBAL_VAR_" + globalContext.size();
+		CtField field = new CtField(pool.get("java.lang.Object"), varName, cc);
+		cc.addField(field);
+		globalContext.add(trueName, varName);
+		lConstructor.insertAfter("{" + varName + " = " + x.second + ";}");
+	}
 
-	private void processBlock(Token token, CtClass cc) throws Exception{
+	private void processBlock(Node node, CtClass cc) throws Exception{
 		//Function definition
-		if (token.getSubTokens().get(0).getResult().equals("defun")){
-			CtMethod method = buildMethod(cc, token);
+		if (node.getSubNodes().get(0).getResult().equals("defun")){
+			CtMethod method = buildMethod(cc, node);
 			//cc.addMethod(method);
 		}
 		//Global variable
-		else if (token.getSubTokens().get(0).getResult().equals("defn")){
-
+		else if (node.getSubNodes().get(0).getResult().equals("defn")){
+			createNewVar(node, cc);
 		}
 		//Main source
 		else{
-			var x = evaluateToken(lMain, token, new Context(), localVars);
+			var x = evaluateNode(lMain, node, new Context(), localVars);
 			localVars += x.first;
 			lMain.insertAfter("{System.out.println(" + x.second + ");}");
 		}
 	}
 
-	public Class generate(List<Token> tokens) throws CannotCompileException
+	private Pair<Integer, String> evaluateInt(CtMethod method, Node node, Context context, int created) throws Exception {
+		String var;
+		int cnt = 0;
+		var = "LOCAL_VAR_" + created;
+		cnt++;
+		method.addLocalVariable(var, pool.get("java.lang.Object"));
+		method.insertAfter("{ " + var + " = new Integer(" + node.getResult() + ");}");
+		return new Pair<>(cnt, var);
+	}
+	private Pair<Integer, String> evaluateFloat(CtMethod method, Node node, Context context, int created) throws Exception {
+		String var;
+		int cnt = 0;
+		var = "LOCAL_VAR_" + created;
+		cnt++;
+		method.addLocalVariable(var, pool.get("java.lang.Object"));
+		method.insertAfter("{ " + var + " = new Double(" + node.getResult() + ");}");
+		return new Pair<>(cnt, var);
+	}
+	private Pair<Integer, String> evaluateString(CtMethod method, Node node, Context context, int created) throws Exception {
+		String var;
+		int cnt = 0;
+		var = "LOCAL_VAR_" + created;
+		cnt++;
+		method.addLocalVariable(var, pool.get("java.lang.Object"));
+		method.insertAfter("{ " + var + " = new String(\"" + node.getResult() + "\");}");
+		return new Pair<>(cnt, var);
+	}
+	private Pair<Integer, String> evaluateVariable(CtMethod method, Node node, Context context, int created) throws Exception {
+		String var;
+		int cnt = 0;
+		var = "LOCAL_VAR_" + created;
+		cnt++;
+		if (node.getResult().equals("True")) {
+			method.addLocalVariable(var, pool.get("java.lang.Object"));
+			method.insertAfter("{ " + var + " = new Boolean(true);}");
+		}
+		else if (node.getResult().equals("False")) {
+			method.addLocalVariable(var, pool.get("java.lang.Object"));
+			method.insertAfter("{ " + var + " = new Boolean(false);}");
+		}
+		else if (context.containsVar(node.getResult())){
+			method.addLocalVariable(var, pool.get("java.lang.Object"));
+			method.insertAfter("{ " + var + " = " + context.getVar(node.getResult()) + ";}");
+		}
+		else if (globalContext.containsVar(node.getResult())){
+			method.addLocalVariable(var, pool.get("java.lang.Object"));
+			method.insertAfter("{ " + var + " = " + globalContext.getVar(node.getResult()) + ";}");
+		}
+		else if (nameToDesc.containsKey(node.getResult())){
+			var t = nameToDesc.get(node.getResult());
+			if (t.getArgsCount() == 0){
+				method.addLocalVariable(var, pool.get("java.lang.Object"));
+				method.insertAfter("{ " + var + " = " + t.getName() + "();}");
+			}
+		}
+		else{
+			throw new Exception("Unknown variable: " + node.getResult());
+		}
+		return new Pair<>(cnt, var);
+	}
+
+
+	private Pair<Integer, String> evaluateComplex(CtMethod method, Node node, Context context, int created) throws Exception {
+		//If there is only 1 subnode
+		String var;
+		int cnt = 0;
+		var = "LOCAL_VAR_" + created;
+		cnt++;
+		method.addLocalVariable(var, pool.get("java.lang.Object"));
+		if (node.getSubNodes().size() == 0) throw new Exception("Empty brackets");
+		if (node.getSubNodes().size() == 1) {
+			Node node1 = node.getSubNodes().get(0);
+			switch (node1.getType())
+			{
+				case VARIABLE -> {
+					var x = evaluateVariable(method, node1, context, cnt + created);
+					method.insertAfter("{ " + var + " = " + x.second + ";}");
+					cnt += x.first;
+				}
+				case STRING -> {
+					var x = evaluateString(method, node1, context, cnt + created);
+					method.insertAfter("{ " + var + " = " + x.second + ";}");
+					cnt += x.first;
+				}
+				case INT -> {
+					var x = evaluateInt(method, node1, context, cnt + created);
+					method.insertAfter("{ " + var + " = " + x.second + ";}");
+					cnt += x.first;
+				}
+				case FLOAT -> {
+					var x = evaluateFloat(method, node1, context, cnt + created);
+					method.insertAfter("{ " + var + " = " + x.second + ";}");
+					cnt += x.first;
+				}
+				case JAVACALL -> {
+					String type = JavaInvoker.returnValue(node1.getResult().substring(1));
+					if (type.equals("double") || type.equals("float")) {
+						method.insertAfter("{ " + var + " = new Double(" + node1.getResult().substring(1) + "());}");
+					}
+					else if (type.equals("int") || type.equals("long")){
+						method.insertAfter("{ " + var + " = new Integer(" + node1.getResult().substring(1) + "());}");
+					}
+					else if (!type.equals("")){
+						method.insertAfter("{ " + var + " = " + node1.getResult().substring(1) + "();}");
+					}
+					else{
+						throw new Exception("Invalid function type");
+					}
+				}
+				case COMPLEX -> {
+					var x = evaluateNode(method, node1, context, cnt + created);
+					method.insertAfter("{ " + var + " = " + x.second + ";}");
+					cnt += x.first;
+				}
+			}
+		}
+		else {
+			Node func = node.getSubNodes().get(0);
+			List<String> args = new LinkedList<>();
+
+			for (int i = 1; i < node.getSubNodes().size(); i++){
+				var tmp  =evaluateNode(method, node.getSubNodes().get(i), context, created + cnt);
+				args.add(tmp.second);
+				cnt += tmp.first;
+			}
+
+			if (func.getType() == Node.Type.JAVACALL){
+				method.insertAfter(applyJavaFunc(func.getResult(), args, var));
+			}
+			else if (func.getType() == Node.Type.VARIABLE){
+				method.insertAfter(applyFunc(func.getResult(), args, var));
+			}
+			else{
+				throw new Exception("Expected defined or java function");
+			}
+		}
+		return new Pair<>(cnt, var);
+	}
+
+	/**
+	 * Generate bytecode from syntax forest
+	 * @param nodes - syntax forest
+	 * @return java class
+	 * @throws CannotCompileException can't build code
+	 */
+	public Class generate(List<Node> nodes) throws CannotCompileException
 	{
 		try
 		{
-			//CtClass cc = pool.get("Source");
-			//cc.setName("LispSource");
-			//cc.writeFile();
-			CtClass cc = pool.makeClass("LispSource");
+			CtClass cc = pool.get("ru.nsu.fit.javalisp.translator.Source");
+			cc.setName("LispSource");
 
-			cc.addConstructor(CtNewConstructor.make("public " + cc.getName() + "() {}", cc));
-
-			fill(cc);
-
-			lMain = CtNewMethod.make("public void evaluate() throws Exception {\n}", cc);;
-
-			for (var t : tokens){
+			lMain = CtNewMethod.make("public void evaluate() throws Exception {\n}", cc);
+			lConstructor = CtNewMethod.make("public void initGlobals() throws Exception{\n}", cc);
+			for (var t : nodes){
 				processBlock(t, cc);
 			}
-			/*CtMethod m = buildMethod(cc, tokens.get(0));
 
-			cc.addMethod(m);*/
+			CtField field = new CtField(pool.get("java.lang.Integer"), "HUI_1", cc);
 
-//			CtMethod method = cc.getDeclaredMethod("evaluate");
-		/*	lMain.addLocalVariable("a1", pool.get("java.lang.Double"));
-			lMain.addLocalVariable("b1", pool.get("java.lang.Double"));
-			lMain.addLocalVariable("c1", pool.get("java.lang.Double"));
-
-
-			lMain.insertAfter("{a1 = new Double(25.0);}");
-			lMain.insertAfter("{b1 = new Double(15.0);}");
-			lMain.addLocalVariable("d1", pool.get("java.lang.Object"));
-			lMain.addLocalVariable("e1", pool.get("java.lang.Object"));
-
-			List<String> args = new LinkedList<>();
-			args.add("a1");
-			args.add("b1");
-
-			lMain.insertAfter(apply("+", args, "c1"));
-
-			args = new LinkedList<>();
-			args.add("b1");
-			args.add("a1");
-
-			lMain.insertAfter(apply("-", args, "d1"));
-
-			args = new LinkedList<>();
-			args.add("c1");
-			args.add("d1");
-			lMain.insertAfter(apply("+", args, "e1"));
-
-			lMain.insertAfter("{System.out.println(e1);}");*/
+			cc.addField(field);
 
 			cc.addMethod(lMain);
+			cc.addMethod(lConstructor);
+			//CtConstructor[] ccs = cc.getConstructors();
+			//CtConstructor constructor = CtNewConstructor.make("public " + cc.getSimpleName() + "(){}", cc);//cc.getConstructor("LispSource");
+			//cc.addConstructor(constructor);
+			//constructor.insertAfter("{initGlobal();}");
 
 			CtMethod method1 = CtNewMethod.make("public static void main(String[] args){}", cc);
 
 
 			method1.addLocalVariable("source", pool.get("LispSource"));
 			method1.insertAfter("{source = new LispSource(); }");
+			method1.insertAfter("{source.initGlobals();}");
 			method1.insertAfter("{source.evaluate(); }");
 			cc.addMethod(method1);
 

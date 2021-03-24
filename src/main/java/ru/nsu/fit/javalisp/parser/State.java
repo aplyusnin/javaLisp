@@ -5,6 +5,9 @@ import ru.nsu.fit.javalisp.Pair;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 
+/**
+ * State class for state machine
+ */
 public class State {
 
 	private static class transitionFunction{
@@ -27,6 +30,11 @@ public class State {
 	private transitionFunction errorTransition;
 
 	private String name;
+
+	/**
+	 * Create state
+	 * @param name - state name
+	 */
 	public State(String name){
 		transitions = new HashMap<>();
 		this.name = name;
@@ -46,10 +54,19 @@ public class State {
 		transitions.put(ch, new Pair<>(state, function));
 	}
 
+	/**
+	 * Set error state
+	 * @param error error state name
+	 */
 	public void setErrorState(State error){
 		errorState = error;
 	}
 
+	/**
+	 * Perform transition
+	 * @param ch - character to make transition
+	 * @return new transition
+	 */
 	public State makeTransition(Character ch) throws Exception {
 		if (transitions.containsKey(ch)) {
 			State next = transitions.get(ch).first;
@@ -62,6 +79,10 @@ public class State {
 		}
 	}
 
+	/**
+	 * Get state name
+	 * @return state name
+	 */
 	public String getName(){
 		return name;
 	}

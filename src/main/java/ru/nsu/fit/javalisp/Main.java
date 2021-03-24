@@ -8,28 +8,23 @@ import java.lang.reflect.Method;
 import java.util.List;
 
 public class Main {
-/*
-	public Object add(List<Object> params) throws Exception {
-		Integer ans = 0;
-		for (var x : params){
-			ans += (Integer)x; }
-		return ans;
-	}*/
 
 	public static void main(String[] args) throws Exception
 	{
-//		File text = new File(args[0]);
 
 		Parser parser = new LispParser(args[0]);
 
-		List<Token> tokenList = parser.parse();
+		List<Node> nodeList = parser.parse();
 
 		LispTransformer transformer = new LispTransformer();
 
-		Class clazz = transformer.generate(tokenList);
+
+		Class clazz = transformer.generate(nodeList);
 
 		Object source = clazz.newInstance();
-		Method method = clazz.getDeclaredMethod("evaluate");
-		method.invoke(source);
+		Method method1 = clazz.getDeclaredMethod("initGlobals");
+		method1.invoke(source);
+		Method method2 = clazz.getDeclaredMethod("evaluate");
+		method2.invoke(source);
 	}
 }
