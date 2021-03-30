@@ -54,14 +54,17 @@ public class ApplyVHandler extends BasicHandler {
 			String name = "_LOCAL_VAR_" + (created + cnt);
 			vars.add(name);
 			cnt++;
-			var t = startingHandler.evalNode(node.getSubNodes().get(i), created + cnt, name);
-			cnt += t.second;
-			src.add(t.first);
+			try {
+				var t = startingHandler.evalNode(node.getSubNodes().get(i), created + cnt, name);
+				cnt += t.second;
+				src.add(t.first);
+			}
+			catch (Exception e){
+				return new Pair<>(Boolean.FALSE, null);
+			}
 		}
 
 		String acc = "_LOCAL_VAR_" + (created + cnt);
-
-
 
 
 		for (int i = 0; i < src.size(); i++) {

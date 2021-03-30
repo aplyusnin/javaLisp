@@ -16,7 +16,7 @@ public class Main {
 		List<Node> nodeList = parser.parse();
 
 		LispTransformer transformer = new LispTransformer();
-		
+
 		Class clazz = transformer.generate(nodeList);
 		Object source = clazz.newInstance();
 		Method method1 = clazz.getDeclaredMethod("initGlobals");

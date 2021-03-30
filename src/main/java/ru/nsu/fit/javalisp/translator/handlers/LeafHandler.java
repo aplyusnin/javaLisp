@@ -72,7 +72,8 @@ public class LeafHandler extends BasicHandler {
 					}
 				}
 				if (!found)
-					throw new Exception("Unknown symbol " + node.getResult());
+					return new Pair<>(Boolean.FALSE, null);
+//					throw new Exception("Unknown symbol " + node.getResult());
 			}
 			case JAVACALL -> {
 				var t = JavaInvoker.getFunction(node.getResult(), 0);

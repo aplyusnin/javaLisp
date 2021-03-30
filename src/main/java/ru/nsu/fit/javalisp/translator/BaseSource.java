@@ -1,9 +1,9 @@
 package ru.nsu.fit.javalisp.translator;
 
-import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Scanner;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.*;
+import java.util.function.Function;
 
 /**
  * Class with standard functions
@@ -267,6 +267,22 @@ public class BaseSource {
 		return isGte((Double)a, (Double)b);
 	}
 
+	protected Object inc(Integer a){
+		return (a + 1);
+	}
+
+	protected Object inc(Double a){
+		return (a + 1);
+	}
+
+	protected Object inc(Object a) throws ClassCastException{
+		try{
+			return inc((Integer)a);
+		}
+		catch (Exception e){}
+		return inc((Double) a);
+	}
+
 	protected Object not(Object a) throws ClassCastException{
 		return !((Boolean)a);
 	}
@@ -297,6 +313,90 @@ public class BaseSource {
 		return new LinkedList<>(Arrays.asList(objects));
 	}
 
+	protected Object range(Object left, Object right){
+		int l = (Integer)left;
+		int r = (Integer)right;
+
+		List<Object> list = new LinkedList<>();
+		for (int i = Math.min(l, r); i <= Math.max(l, r);  i++){
+			list.add(i);
+		}
+		if (r < l) return reverse(list);
+		else return list;
+	}
+
+	protected Object head(Object list){
+		return ((List<Object>)list).get(0);
+	}
+
+	protected Object tail(Object list){
+		var t  = new LinkedList<Object>();
+		var it = ((List<Object>)list).iterator();
+		try {
+			it.next();
+		}
+		catch (Exception ignored){
+
+		}
+		while (it.hasNext()){
+			t.add(it.next());
+		}
+		return t;
+	}
+
+	protected Object reverse(Object list){
+		var t = new LinkedList<Object>();
+		t.addAll((List<Object>)list);
+		Collections.reverse(t);
+		return t;
+	}
+
+	protected Object concat(Object list1, Object list2){
+		var t = new LinkedList<>();
+		t.addAll((List<Object>)list1);
+		t.addAll((List<Object>)list2);
+		return t;
+	}
+
+
+	private Method findMethod(String name){
+		Class mclass = this.getClass();
+		Method[] methods = mclass.getDeclaredMethods();
+		for (var x : methods){
+			if (x.toString().contains(name) && !Modifier.isPrivate(x.getModifiers())){
+				return x;
+			}
+		}
+		mclass = BaseSource.class;
+		methods = mclass.getDeclaredMethods();
+		for (var x : methods){
+			if (x.toString().contains(name) && !Modifier.isPrivate(x.getModifiers())){
+				return x;
+			}
+		}
+		return null;
+	}
+
+	protected Object invokeMethod(Object name, Object... params) throws Exception{
+		Method m = findMethod((String)name);
+		return m.invoke(this, params);
+	}
+
+	protected Object map(Object name, Object list) throws Exception{
+		var t = new LinkedList<>();
+		for (var x : (List<Object>)list){
+			t.add(invokeMethod(name, x));
+		}
+		return t;
+	}
+
+	protected Object reduce(Object name, Object list, Object acc) throws Exception {
+		Object res = acc;
+		for (var x : (List<Object>)list){
+			res = invokeMethod(name, res, x);
+		}
+		return res;
+	}
 
 	public void evaluate(){
 

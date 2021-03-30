@@ -9,18 +9,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
-/**
- * Handler that applies defined or declared function to arguments
- */
-public class ApplyFHandler extends BasicHandler {
+public class ApplyLHandler extends BasicHandler {
 
-	/**
-	 * Create handler
-	 * @param contexts - list of contexts
-	 * @param nameToDesc - defined functions
-	 * @param nameToDummy - declared functions
-	 */
-	public ApplyFHandler(List<Context> contexts, HashMap<String, FunctionDescriptor> nameToDesc, HashMap<String, FunctionDescriptor> nameToDummy){
+	public ApplyLHandler(List<Context> contexts, HashMap<String, FunctionDescriptor> nameToDesc, HashMap<String, FunctionDescriptor> nameToDummy) {
 		super(contexts, nameToDesc, nameToDummy);
 	}
 
@@ -51,27 +42,31 @@ public class ApplyFHandler extends BasicHandler {
 		List<String> vars = new ArrayList<>();
 		List<String> src = new ArrayList<>();
 		for (int i = 1; i < node.getSubNodes().size(); i++) {
-			try {
-				String name = "_LOCAL_VAR_" + (created + cnt);
-				vars.add(name);
-				cnt++;
-				var t = startingHandler.evalNode(node.getSubNodes().get(i), created + cnt, name);
-				cnt += t.second;
-				src.add(t.first);
+			if (node.getSubNodes().get(i).getType() == Node.Type.VARIABLE){
+				String name;
+				if (nameToDesc.containsKey(node.getSubNodes().get(i).getResult())){
+					name = nameToDesc.get(node.getSubNodes().get(i).getResult()).getName();
+					vars.add("(\"" + name + "\")");
+					continue;
+				}
+				else if (nameToDummy.containsKey(node.getSubNodes().get(i).getResult())){
+					name = nameToDummy.get(node.getSubNodes().get(i).getResult()).getName();
+					vars.add("(\"" + name + "\")");
+					continue;
+				}
 			}
-			catch (Exception e){
-				return new Pair<>(Boolean.FALSE, null);
-			}
+
+			String name = "_LOCAL_VAR_" + (created + cnt);
+			vars.add(name);
+			cnt++;
+			var t = startingHandler.evalNode(node.getSubNodes().get(i), created + cnt, name);
+			cnt += t.second;
+			src.add(t.first);
 		}
 
 		if (func.getArgsCount() == -1) return new Pair<>(Boolean.FALSE, null);
 
-		if (vars.size() != func.getArgsCount()) {
-			return new Pair<>(Boolean.FALSE, null);
-		}
-
-
-			//throw new Exception("Waited for: " + func.getArgsCount() + "arguments, found: " + vars.size() + " arguments");
+		if (vars.size() != func.getArgsCount()) throw new Exception("Waited for: " + func.getArgsCount() + "arguments, found: " + vars.size() + " arguments");
 
 		for (int i = 0; i < src.size(); i++) {
 			builder.append(src.get(i));
@@ -86,4 +81,5 @@ public class ApplyFHandler extends BasicHandler {
 
 		return new Pair<>(Boolean.TRUE, new Pair<>(builder.toString(), cnt));
 	}
+
 }

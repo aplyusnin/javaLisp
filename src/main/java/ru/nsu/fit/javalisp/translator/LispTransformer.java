@@ -14,7 +14,7 @@ public class LispTransformer {
 	private HashMap<String, FunctionDescriptor> nameToDesc;
 	private HashMap<String, FunctionDescriptor> nameToDummy;
 	private BasicHandler startingHandler;
-
+	private BasicHandler lastHandler;
 	private List<Context> contexts;
 
 	private Context globalContext;
@@ -52,6 +52,14 @@ public class LispTransformer {
 		nameToDesc.put("print", new FunctionDescriptor("print", 1));
 		nameToDesc.put("println", new FunctionDescriptor("println", 1));
 		nameToDesc.put("list", new FunctionDescriptor("list", -1));
+		nameToDesc.put("range", new FunctionDescriptor("range", 2));
+		nameToDesc.put("head", new FunctionDescriptor("head", 1));
+		nameToDesc.put("tail", new FunctionDescriptor("tail", 1));
+		nameToDesc.put("reverse", new FunctionDescriptor("reverse", 1));
+		nameToDesc.put("concat", new FunctionDescriptor("concat", 2));
+		nameToDesc.put("map", new FunctionDescriptor("map", 2));
+		nameToDesc.put("reduce", new FunctionDescriptor("reduce", 3));
+
 
 		LeafHandler leafHandler = new LeafHandler  (contexts, nameToDesc, nameToDummy);
 		ApplyJHandler  jHandler = new ApplyJHandler(contexts, nameToDesc, nameToDummy);
@@ -60,6 +68,9 @@ public class LispTransformer {
 		WrapHandler wrapHandler = new WrapHandler  (contexts, nameToDesc, nameToDummy);
 		LetHandler   letHandler = new LetHandler   (contexts, nameToDesc, nameToDummy);
 		ApplyVHandler  vHandler = new ApplyVHandler(contexts, nameToDesc, nameToDummy);
+		DoHandler  doHandler = new DoHandler(contexts, nameToDesc, nameToDummy);
+		ApplyLHandler lHandler = new ApplyLHandler(contexts, nameToDesc, nameToDummy);
+
 
 		jHandler.setStartingHandler(leafHandler);
 		letHandler.setStartingHandler(leafHandler);
@@ -67,13 +78,17 @@ public class LispTransformer {
 		ifHandler.setStartingHandler(leafHandler);
 		wrapHandler.setStartingHandler(leafHandler);
 		vHandler.setStartingHandler(leafHandler);
+		doHandler.setStartingHandler(leafHandler);
+		lHandler.setStartingHandler(leafHandler);
 
 		leafHandler.setNextHandler(jHandler);
 		jHandler.setNextHandler(letHandler);
 		letHandler.setNextHandler(ifHandler);
 		ifHandler.setNextHandler(fHandler);
 		fHandler.setNextHandler(vHandler);
-		vHandler.setNextHandler(wrapHandler);
+		vHandler.setNextHandler(doHandler);
+		doHandler.setNextHandler(lHandler);
+		lHandler.setNextHandler(wrapHandler);
 
 		Context global = new Context();
 		contexts.add(global);
@@ -131,13 +146,15 @@ public class LispTransformer {
 		if (node.getSubNodes().size() != 3) throw new Exception("Invalid global variable definition");
 		if (node.getSubNodes().get(1).getType() != Node.Type.VARIABLE) throw new Exception("Invalid variable name");
 		String name = node.getSubNodes().get(1).getResult();
-		String name1 = "_GLOBAL_VAR_" + globalContext.size();
+		String name1 = "_GLOBAL_VAR_" + contexts.get(0).size();
 		if (contexts.get(0).containsVar(name)) throw new Exception("Variable " + name + " is already defined.");
 		CtField field = new CtField(pool.get("java.lang.Object"), name1, cc);
 		cc.addField(field);
 		contexts.get(0).add(name, name1);
 		var t = startingHandler.evalNode(node.getSubNodes().get(2), varsInInit, name1);
-
+		for (int i = varsInInit; i < varsInInit + t.second; i++){
+			lConstructor.addLocalVariable("_LOCAL_VAR_" + i, pool.get("java.lang.Object"));
+		}
 		varsInInit += t.second;
 		lConstructor.insertAfter(t.first);
 
@@ -205,7 +222,7 @@ public class LispTransformer {
 		src.append(t.first);
 		src.append("{ return ").append(result).append("; }\n");
 
-		System.out.println(src.toString());
+		//System.out.println(src.toString());
 		method.insertBefore(src.toString());
 
 		contexts.remove(contexts.size() - 1);
@@ -368,7 +385,7 @@ public class LispTransformer {
 			src.append("").append("$").append(i + 1).append(" = ").append(vars.get(i)).append(";\n");
 		}
 		src.append("}\n");
-		System.out.println(src.toString());
+		//System.out.println(src.toString());
 		method.insertBefore(src.toString());
 
 		contexts.remove(contexts.size() - 1);
@@ -403,6 +420,7 @@ public class LispTransformer {
 			localVars += t.second;
 			lMain.insertAfter(t.first);
 			lMain.insertAfter("{System.out.println(" + v + ");}\n");
+
 		}
 	}
 
