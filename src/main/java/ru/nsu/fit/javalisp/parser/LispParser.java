@@ -58,6 +58,7 @@ public class LispParser extends Parser {
 			machine.addTransition((char)(i + 'a'), "JavaCall", "JavaCall", this, LispParser.class.getDeclaredMethod("addChar"));
 			machine.addTransition((char)(i + 'A'), "JavaCall", "JavaCall", this, LispParser.class.getDeclaredMethod("addChar"));
 		}
+		machine.addTransition('-', "Empty", "Integer", this, LispParser.class.getDeclaredMethod("newIntToken"));
 		for (int i = 0; i < 10; i++){
 			machine.addTransition((char)(i + '0'), "Empty", "Integer", this, LispParser.class.getDeclaredMethod("newIntToken"));
 			machine.addTransition((char)(i + '0'), "Integer", "Integer", this, LispParser.class.getDeclaredMethod("addChar"));
@@ -79,13 +80,15 @@ public class LispParser extends Parser {
 
 		machine.addTransitions(".,", "Integer", "Float", this, LispParser.class.getDeclaredMethod("toFloat"));
 		machine.addTransitions(".,", "Empty", "Float", this, LispParser.class.getDeclaredMethod("newFloatToken"));
+		machine.addTransitions(".", "Word", "Word", this, LispParser.class.getDeclaredMethod("addChar"));
 		machine.addTransitions(".,", "StringBody", "StringBody", this, LispParser.class.getDeclaredMethod("addChar"));
-		machine.addTransitions(".", "JavaCall", "JavaCall", this, LispParser.class.getDeclaredMethod("addChar"));
+		machine.addTransitions("./", "JavaCall", "JavaCall", this, LispParser.class.getDeclaredMethod("addChar"));
 
 		machine.addTransitions("\"", "Empty", "StringBody", this, LispParser.class.getDeclaredMethod("newString"));
 		machine.addTransitions("\"", "StringBody", "StringEnd");
-		String aux = "!:#$%^&*-+=_<>=?|~`@";
-		machine.addTransitions(aux.substring(0, 19), "Empty", "Word", this, LispParser.class.getDeclaredMethod("newWordToken"));
+		String aux = "!:#$%^&*-+=_<>=?|~/`@";
+		machine.addTransitions(aux.substring(0, 20), "Word", "Word", this, LispParser.class.getDeclaredMethod("addChar"));
+		machine.addTransitions(aux.substring(0, 20), "Empty", "Word", this, LispParser.class.getDeclaredMethod("newWordToken"));
 		machine.addTransitions("@", "Empty", "JavaCall", this, LispParser.class.getDeclaredMethod("newJavaCall"));
 		machine.addTransitions(aux, "StringBody", "StringBody", this, LispParser.class.getDeclaredMethod("addChar"));
 		machine.setErrorTransitionFunction(this, LispParser.class.getDeclaredMethod("error"));
@@ -110,7 +113,6 @@ public class LispParser extends Parser {
 		Node node = new Node();
 		node.setType(Node.Type.JAVACALL);
 		stack.push(node);
-		node.addChar((char)nextChar);
 	}
 
 
@@ -127,6 +129,32 @@ public class LispParser extends Parser {
 		node.setType(Node.Type.VARIABLE);
 		node.addChar((char)nextChar);
 		stack.push(node);
+	}
+
+	private void verify(Node node) throws Exception{
+		if (node.getType() == Node.Type.VARIABLE){
+			try {
+				Integer.parseInt(node.getResult());
+				node.setType(Node.Type.INT);
+			}
+			catch (Exception e) {
+
+				try {
+					Double.parseDouble(node.getResult());
+					node.setType(Node.Type.FLOAT);
+				}
+				catch (Exception e1) {
+
+				}
+			}
+			if (node.getResult().equals("true") || node.getResult().equals("false")){
+				node.setType(Node.Type.BOOL);
+			}
+		}
+		if (node.getType() == Node.Type.JAVACALL){
+			long t = node.getResult().chars().filter(e -> e == '/').count();
+			if (t != 1) throw new Exception("Invalid java call: " + node.getResult());
+		}
 	}
 
 	private void complete() throws Exception{
@@ -147,6 +175,7 @@ public class LispParser extends Parser {
 			}
 			else{
 				node.process();
+				verify(node);
 				if (stack.size() > 0)
 				{
 					Node node1 = stack.pop();
@@ -159,18 +188,19 @@ public class LispParser extends Parser {
 					}
 				}
 				else{
-					throw new Exception("Error, there is no brackets");
+					throw new Exception("Error, there is no brackets on line: " + line + ", position: " + position);
 				}
 			}
 		}
 		else{
 			Node node = stack.pop();
 			node.process();
+			verify(node);
 			if (stack.size() > 0){
 				stack.peek().addNode(node);
 			}
 			else{
-				throw new Exception("Error, there is no brackets");
+				throw new Exception("Error, there is no brackets on line: " + line + ", position: " + position);
 			}
 		}
 	}

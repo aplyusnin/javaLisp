@@ -1,5 +1,8 @@
 package ru.nsu.fit.javalisp.translator;
 
+/**
+ * Description of declared function
+ */
 public class FunctionDescriptor {
 	private final String name;
 	private final int argsCount;

@@ -7,9 +7,11 @@ import java.util.HashMap;
  */
 public class Context {
 	private HashMap<String, String> args;
+	private HashMap<String, String> inverse;
 
 	public Context(){
 		args = new HashMap<>();
+		inverse = new HashMap<>();
 	}
 
 	/**
@@ -19,6 +21,7 @@ public class Context {
 	 */
 	public void add(String argName, String localName){
 		args.put(argName, localName);
+		inverse.put(localName, argName);
 	}
 
 	/**
@@ -46,5 +49,9 @@ public class Context {
 	 */
 	public int size(){
 		return args.size();
+	}
+
+	public String getInverse(String name){
+		return inverse.get(name);
 	}
 }

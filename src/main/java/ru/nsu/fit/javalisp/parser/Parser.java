@@ -11,7 +11,7 @@ import java.util.List;
 public abstract class Parser {
 	protected StateMachine machine;
 	protected int line = 1;
-	protected int position = 1;
+	protected int position = 0;
 	protected int level = 0;
 	protected FileReader reader;
 	public Parser(){
@@ -22,7 +22,7 @@ public abstract class Parser {
 		int value = reader.read();
 		if (value == '\n'){
 			line++;
-			position = 1;
+			position = 0;
 		}
 		else {
 			position++;

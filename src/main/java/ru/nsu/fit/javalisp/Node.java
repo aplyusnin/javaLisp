@@ -16,6 +16,7 @@ public class Node {
 		INT,
 		FLOAT,
 		JAVACALL,
+		BOOL,
 		COMPLEX
 	}
 
@@ -36,6 +37,7 @@ public class Node {
 	public void process(){
 		result = value.toString();
 		processed = true;
+
 	}
 
 	/**
@@ -83,5 +85,19 @@ public class Node {
 	public String getResult() {
 		if (!processed) return "";
 		return result;
+	}
+
+
+	public String getInfo(){
+		StringBuilder info = new StringBuilder();
+		if (type != Type.COMPLEX){
+			info.append(result);
+		}
+		else {
+			for (var t : subNodes){
+				info.append("(").append(t.getInfo()).append(" ");
+			}
+		}
+		return info.append(")").toString();
 	}
 }

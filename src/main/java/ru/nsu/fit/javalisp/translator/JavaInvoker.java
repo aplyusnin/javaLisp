@@ -1,8 +1,9 @@
 package ru.nsu.fit.javalisp.translator;
 
+import ru.nsu.fit.javalisp.Pair;
+
 import java.lang.reflect.Method;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -19,7 +20,7 @@ public class JavaInvoker {
 		StringBuilder builder = new StringBuilder();
 		int pos = name.length();
 		pos --;
-		while (pos >= 0 && name.charAt(pos) != '.'){
+		while (pos >= 0 && name.charAt(pos) != '/'){
 			builder.append(name.charAt(pos));
 			pos--;
 		}
@@ -34,7 +35,7 @@ public class JavaInvoker {
 	public static String packName(String name){
 		int pos = name.length();
 		pos --;
-		while (pos >= 0 && name.charAt(pos) != '.') pos--;
+		while (pos >= 0 && name.charAt(pos) != '/') pos--;
 		if (pos == -1) return "";
 		else return name.substring(0, pos);
 	}
@@ -65,6 +66,44 @@ public class JavaInvoker {
 			Method[] mts = clazz.getMethods();
 			Method m = clazz.getMethod(func);
 			return Arrays.stream(m.getParameterTypes()).map(Class::toString).collect(Collectors.toList());
+		}
+		catch (Exception e){
+			return null;
+		}
+	}
+
+	public static String normalizeName(String name){
+		return name.chars().map(e-> e == '/' ? '.' : e).
+				collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append).toString();
+	}
+
+	public static Pair<String, List<String>> getFunction(String signature, int argc){
+		String pack = packName(signature);
+		String name = funcName(signature);
+		try{
+			Class clazz = Class.forName(pack);
+			Method[] mts = clazz.getMethods();
+			List<Method> candidates = new ArrayList<>();
+			for (var x : mts){
+				if (x.toString().contains(name)){
+					candidates.add(x);
+				}
+			}
+			for (var x : candidates){
+				if (x.getParameterTypes().length != argc) continue;
+				var t = Arrays.stream(x.getParameterTypes()).map(Class::toString).collect(Collectors.toList());
+				boolean correct = true;
+				for (var y : t){
+					if (y.equals("float") || y.equals("long")){
+						correct = false;
+						break;
+					}
+				}
+				if (correct){
+					return new Pair<>(x.getReturnType().toString(), t);
+				}
+			}
+			return null;
 		}
 		catch (Exception e){
 			return null;
