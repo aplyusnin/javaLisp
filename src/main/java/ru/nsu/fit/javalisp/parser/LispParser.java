@@ -153,7 +153,8 @@ public class LispParser extends Parser {
 		}
 		if (node.getType() == Node.Type.JAVACALL){
 			long t = node.getResult().chars().filter(e -> e == '/').count();
-			if (t != 1) throw new Exception("Invalid java call: " + node.getResult());
+			if (t != 1)
+				throw new Exception("Invalid java call: " + node.getResult());
 		}
 	}
 

@@ -108,6 +108,10 @@ public class BaseSource {
 		throw new Exception("Cant cast to float");
 	}
 
+	protected String castS(Object o) throws Exception{
+		return o.toString();
+	}
+
 	private Double mul(Double a, Double b){
 		return a * b;
 	}
@@ -324,6 +328,11 @@ public class BaseSource {
 		if (r < l) return reverse(list);
 		else return list;
 	}
+
+	protected Object get(Object id, Object list){
+		return ((List<Object>)list).get((Integer)id);
+	}
+
 
 	protected Object head(Object list){
 		return ((List<Object>)list).get(0);

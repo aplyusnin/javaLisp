@@ -39,6 +39,7 @@ public class LispTransformer {
 		nameToDesc.put("*", new FunctionDescriptor("mul", 2));
 		nameToDesc.put("/", new FunctionDescriptor("div", 2));
 		nameToDesc.put(":float", new FunctionDescriptor("castD", 1));
+		nameToDesc.put(":string", new FunctionDescriptor("castS", 1));
 		nameToDesc.put(":int", new FunctionDescriptor("castI", 1));
 		nameToDesc.put("not", new FunctionDescriptor("not", 1));
 		nameToDesc.put("and", new FunctionDescriptor("and", 2));
@@ -56,6 +57,7 @@ public class LispTransformer {
 		nameToDesc.put("head", new FunctionDescriptor("head", 1));
 		nameToDesc.put("tail", new FunctionDescriptor("tail", 1));
 		nameToDesc.put("reverse", new FunctionDescriptor("reverse", 1));
+		nameToDesc.put("get", new FunctionDescriptor("get", 2));;
 		nameToDesc.put("concat", new FunctionDescriptor("concat", 2));
 		nameToDesc.put("map", new FunctionDescriptor("map", 2));
 		nameToDesc.put("reduce", new FunctionDescriptor("reduce", 3));
