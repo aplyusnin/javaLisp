@@ -1,16 +1,59 @@
-(def List1 (range 1 10))
+(def x 10)
 
-(def List2 (list "a" "b" "c" "d"))
+(decl f (x acc))
 
-(concat List1 List2)
+(defun fact (x) (f x 1))
+
+(defun f (0 acc) acc
+         (x acc) (f (- x 1) (* acc x)))
+
+(fact 5)
+
+(defun sum-square (a b)
+       (let ((a2 (* a a))
+             (b2 (* b b))
+             (ab (* a b))
+             (ab2 (* ab 2)))
+       (+ a2 (+ b2 ab2)))
+)
+
+(sum-square 2 2)
+
+(defun do-fact (x)
+    (do (print "Calculate factorial ")
+        (print x)
+        (print " ")
+        (fact x)))
+
+(do-fact 3)
+
+(def List (range 1 5))
+
+(map do-fact List)
 
 
-(head List1)
+(decl is-odd (x))
 
-(tail List2)
+(decl is-even (x))
 
-(get 3 List2)
+(defun is-even (0) true
+               (1) false
+               (x) (not (is-odd (- x 1))))
 
-(defun inc (x) (+ x 1))
 
-(map inc List1)
+(defun is-odd (0) true
+               (1) false
+               (x) (not (is-even (- x 1))))
+
+(map is-even List)
+
+(defun is-good (x)
+       (if (= x 3) true false))
+
+(map is-good List)
+
+((reduce + List 0))
+
+(defun acos (x) (@java.lang.Math/acos x))
+
+(acos -1.0)
