@@ -4,6 +4,7 @@ import ru.nsu.fit.javalisp.Node;
 import ru.nsu.fit.javalisp.Pair;
 import ru.nsu.fit.javalisp.translator.Context;
 import ru.nsu.fit.javalisp.translator.FunctionDescriptor;
+import ru.nsu.fit.javalisp.translator.TranslationResult;
 
 import java.util.HashMap;
 import java.util.List;
@@ -15,28 +16,27 @@ public class IfHandler extends BasicHandler{
 
 	/**
 	 * Create handler
-	 * @param contexts - list of contexts
 	 * @param nameToDesc - defined functions
 	 * @param nameToDummy - declared functions
 	 */
 
-	public IfHandler(List<Context> contexts, HashMap<String, FunctionDescriptor> nameToDesc, HashMap<String, FunctionDescriptor> nameToDummy){
-		super(contexts, nameToDesc, nameToDummy);
+	public IfHandler(HashMap<String, FunctionDescriptor> nameToDesc, HashMap<String, FunctionDescriptor> nameToDummy){
+		super(nameToDesc, nameToDummy);
 		keyWord = "if";
 	}
 
 	@Override
-	protected Pair<Boolean, Pair<String, Integer>> generateSource(Node node, int created, String resVar) throws Exception
+	protected TranslationResult generateSource(Context currentContext, Node node, int created, String resVar) throws Exception
 	{
 		if (node.getType() != Node.Type.COMPLEX){
-			return new Pair<>(Boolean.FALSE, null);
+			return TranslationResult.FAIL;
 		}
 		Node node1 = node.getSubNodes().get(0);
-		if (node1.getType() != Node.Type.VARIABLE) return new Pair<>(Boolean.FALSE, null);
-		if (!node1.getResult().equals(keyWord)) return new Pair<>(Boolean.FALSE, null);
+		if (node1.getType() != Node.Type.VARIABLE) return TranslationResult.FAIL;
+		if (!node1.getResult().equals(keyWord)) return TranslationResult.FAIL;
 
 		if (node.getSubNodes().size() < 3 || node.getSubNodes().size() > 4) {
-			return new Pair<>(Boolean.FALSE, null);
+			return TranslationResult.FAIL;
 		}
 
 		int cnt = 0;
@@ -45,28 +45,33 @@ public class IfHandler extends BasicHandler{
 
 		StringBuilder builder = new StringBuilder();
 
-		var t = evalNode(node.getSubNodes().get(1), created + cnt, condVar);
+		var t = evalNode(currentContext, node.getSubNodes().get(1), created + cnt, condVar);
+		if (!t.isSuccess() || t.getValue() != TranslationResult.Value.SOURCE) return TranslationResult.FAIL;
 
-		builder.append(t.first);
+		builder.append(t.getSrc());
 
 		builder.append("if (((Boolean)").append(condVar).append(").booleanValue()){\n");
 
-		cnt += t.second;
+		cnt += t.getUsedVars();
 
-		var t1 = startingHandler.evalNode(node.getSubNodes().get(2),created + cnt, resVar);
-		cnt += t1.second;
-		builder.append(t1.first);
+		var t1 = startingHandler.evalNode(currentContext, node.getSubNodes().get(2),created + cnt, resVar);
+		if (!t1.isSuccess() || t1.getValue() != TranslationResult.Value.SOURCE) return TranslationResult.FAIL;
+		cnt += t1.getUsedVars();
+		builder.append(t1.getSrc());
 		builder.append("}\nelse {\n");
 		if (node.getSubNodes().size() == 4) {
-			var t2 = startingHandler.evalNode(node.getSubNodes().get(3), created + cnt, resVar);
-			builder.append(t2.first);
-			cnt += t2.second;
+			var t2 = startingHandler.evalNode(currentContext, node.getSubNodes().get(3), created + cnt, resVar);
+			if (!t2.isSuccess() || t2.getValue() != TranslationResult.Value.SOURCE) return TranslationResult.FAIL;
+
+			builder.append(t2.getSrc());
+			cnt += t2.getUsedVars();
 		}
 		else {
 			builder.append(resVar).append(" = null;\n");
 		}
 		builder.append("}\n");
-		return new Pair<>(Boolean.TRUE, new Pair<>(builder.toString(), cnt));
+		return new TranslationResult.Builder().setSuccess(true).setSrc(builder.toString())
+				.setValue(TranslationResult.Value.SOURCE).setUsedVars(cnt).build();
 	}
 
 }

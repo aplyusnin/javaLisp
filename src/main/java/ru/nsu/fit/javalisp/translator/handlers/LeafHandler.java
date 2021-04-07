@@ -2,9 +2,7 @@ package ru.nsu.fit.javalisp.translator.handlers;
 
 import ru.nsu.fit.javalisp.Node;
 import ru.nsu.fit.javalisp.Pair;
-import ru.nsu.fit.javalisp.translator.Context;
-import ru.nsu.fit.javalisp.translator.FunctionDescriptor;
-import ru.nsu.fit.javalisp.translator.JavaInvoker;
+import ru.nsu.fit.javalisp.translator.*;
 
 import java.util.HashMap;
 import java.util.List;
@@ -16,72 +14,75 @@ public class LeafHandler extends BasicHandler {
 
 	/**
 	 * Create handler
-	 * @param contexts - list of contexts
 	 * @param nameToDesc - defined functions
 	 * @param nameToDummy - declared functions
 	 */
 
-	public LeafHandler(List<Context> contexts, HashMap<String, FunctionDescriptor> nameToDesc, HashMap<String, FunctionDescriptor> nameToDummy){
-		super(contexts, nameToDesc, nameToDummy);
+	public LeafHandler(HashMap<String, FunctionDescriptor> nameToDesc, HashMap<String, FunctionDescriptor> nameToDummy){
+		super(nameToDesc, nameToDummy);
 	}
 
 	@Override
-	public Pair<Boolean, Pair<String, Integer>> generateSource(Node node, int created, String resVar) throws Exception
+	public TranslationResult generateSource(Context currentContext, Node node, int created, String resVar)
 	{
-		if (node.getType() == Node.Type.COMPLEX){
-			return new Pair<>(Boolean.FALSE, null);
+		if (node.getType() == Node.Type.COMPLEX || node.getType() == Node.Type.JAVACALL){
+			return TranslationResult.FAIL;
 		}
 		StringBuilder builder = new StringBuilder();
 		int cnt = 0;
 		switch (node.getType())
 		{
 			case INT -> {
-				builder.append("").append(resVar).append(" = new Integer(").append(node.getResult()).append(");\n");
+				builder.append(resVar).append(" = new Integer(").append(node.getResult()).append(");\n");
+				return new TranslationResult.Builder().setSuccess(true).setSrc(builder.toString())
+						.setValue(TranslationResult.Value.SOURCE).setUsedVars(cnt).build();
 			}
 			case FLOAT -> {
-				builder.append("").append(resVar).append(" = new Double(").append(node.getResult()).append(");\n");
+				builder.append(resVar).append(" = new Double(").append(node.getResult()).append(");\n");
+				return new TranslationResult.Builder().setSuccess(true).setSrc(builder.toString())
+						.setValue(TranslationResult.Value.SOURCE).setUsedVars(cnt).build();
 			}
 			case STRING -> {
-				builder.append("").append(resVar).append(" = new String(\"").append(node.getResult()).append("\");\n");
+				builder.append(resVar).append(" = new String(\"").append(node.getResult()).append("\");\n");
+				return new TranslationResult.Builder().setSuccess(true).setSrc(builder.toString())
+						.setValue(TranslationResult.Value.SOURCE).setUsedVars(cnt).build();
 			}
 			case BOOL -> {
-				builder.append("").append(resVar).append(" = new Boolean(").append(node.getResult()).append(");\n");
+				builder.append(resVar).append(" = new Boolean(").append(node.getResult()).append(");\n");
+				return new TranslationResult.Builder().setSuccess(true).setSrc(builder.toString())
+						.setValue(TranslationResult.Value.SOURCE).setUsedVars(cnt).build();
 			}
 			case VARIABLE -> {
 				boolean found = false;
-				for (int i = contexts.size() - 1; !found && i >= 0; i--) {
-					if (contexts.get(i).containsVar(node.getResult())) {
-						builder.append("").append(resVar).append(" = ").append(contexts.get(i).getVar(node.getResult())).append(";\n");
-						found = true;
-					}
+				TranslationEntry entry = null;
+				if (currentContext.containsVar(node.getResult())) {
+					entry = currentContext.getVar(node.getResult());
+					//builder.append(resVar).append(" = ").append(currentContext.getVar(node.getResult())).append(";\n");
+					found = true;
 				}
 				if (!found) {
 					if (nameToDesc.containsKey(node.getResult())) {
 						FunctionDescriptor desc = nameToDesc.get(node.getResult());
-						if (desc.getArgsCount() == 0) {
-							builder.append("").append(resVar).append(" = ").append(desc.getName()).append("();\n");
-							found = true;
-						}
+						return new TranslationResult.Builder().setSuccess(true).setNumber(desc.getArgsCount()).setValue(TranslationResult.Value.FUNCTIONAL).build();
 					}
 					else if (nameToDummy.containsKey(node.getResult())) {
 						FunctionDescriptor desc = nameToDummy.get(node.getResult());
-						if (desc.getArgsCount() == 0) {
-							builder.append("").append(resVar).append(" = ").append(desc.getName()).append("();\n");
-							found = true;
-						}
+						return new TranslationResult.Builder().setSuccess(true).setNumber(desc.getArgsCount()).setValue(TranslationResult.Value.FUNCTIONAL).build();
 					}
+					return TranslationResult.FAIL;
 				}
-				if (!found)
-					return new Pair<>(Boolean.FALSE, null);
-//					throw new Exception("Unknown symbol " + node.getResult());
-			}
-			case JAVACALL -> {
-				var t = JavaInvoker.getFunction(node.getResult(), 0);
-				String fName = JavaInvoker.normalizeName(node.getResult());
-				builder.append("").append(resVar).append(" = ").append(fName).append("();\n");
+				if (entry.getType() == TranslationEntry.Type.VARIABLE){
+					builder.append(resVar).append(" = ").append(entry.getName()).append(";\n");
+					return new TranslationResult.Builder().setSuccess(true).setSrc(builder.toString()).setUsedVars(cnt)
+							.setValue(TranslationResult.Value.SOURCE).build();
+				}
+				else{
+					return new TranslationResult.Builder().setSuccess(true).setName(entry.getName()).setNumber(entry.getArity())
+							.setValue(TranslationResult.Value.FUNCTIONAL).build();
+				}
 			}
 		}
-	return new Pair<>(Boolean.TRUE, new Pair<>(builder.toString(), cnt));
+		return TranslationResult.FAIL;
 	}
 
 }

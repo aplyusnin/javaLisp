@@ -4,6 +4,7 @@ import ru.nsu.fit.javalisp.Node;
 import ru.nsu.fit.javalisp.Pair;
 import ru.nsu.fit.javalisp.translator.Context;
 import ru.nsu.fit.javalisp.translator.FunctionDescriptor;
+import ru.nsu.fit.javalisp.translator.TranslationResult;
 
 import java.util.HashMap;
 import java.util.List;
@@ -15,19 +16,29 @@ public class WrapHandler extends BasicHandler{
 
 	/**
 	 * Create handler
-	 * @param contexts - list of contexts
 	 * @param nameToDesc - defined functions
 	 * @param nameToDummy - declared functions
 	 */
-	public WrapHandler(List<Context> contexts, HashMap<String, FunctionDescriptor> nameToDesc, HashMap<String, FunctionDescriptor> nameToDummy){
-		super(contexts, nameToDesc, nameToDummy);
+	public WrapHandler(HashMap<String, FunctionDescriptor> nameToDesc, HashMap<String, FunctionDescriptor> nameToDummy){
+		super(nameToDesc, nameToDummy);
 	}
 	@Override
-	protected Pair<Boolean, Pair<String, Integer>> generateSource(Node node, int created, String resVar) throws Exception
+	protected TranslationResult generateSource(Context currentContext, Node node, int created, String resVar) throws Exception
 	{
-		if (node.getType() != Node.Type.COMPLEX) return new Pair<>(Boolean.FALSE, null);
-		if (node.getSubNodes().size() != 1) return new Pair<>(Boolean.FALSE, null);
-		return new Pair<>(Boolean.TRUE, startingHandler.evalNode(node.getSubNodes().get(0), created, resVar));
+		if (node.getType() != Node.Type.COMPLEX) return TranslationResult.FAIL;
+		if (node.getSubNodes().size() != 1) return TranslationResult.FAIL;
+		var t = startingHandler.evalNode(currentContext, node.getSubNodes().get(0), created, resVar);
+		if (!t.isSuccess()) return TranslationResult.FAIL;
+		if (t.getValue() == TranslationResult.Value.SOURCE) return t;
+		if (t.getParamsNumber() == 0){
+			StringBuilder builder = new StringBuilder();
+			builder.append(resVar).append(" = ").append(t.getFuncName()).append("();\n");
+			return new TranslationResult.Builder().setSuccess(true).setSrc(builder.toString())
+					.setValue(TranslationResult.Value.SOURCE).setUsedVars(0).build();
+		}
+		else {
+			return t;
+		}
 	}
 
 }

@@ -1,4 +1,5 @@
 import org.junit.Assert;
+import org.junit.Ignore;
 import org.junit.Test;
 import ru.nsu.fit.javalisp.parser.LispParser;
 import ru.nsu.fit.javalisp.translator.LispTransformer;
@@ -8,6 +9,7 @@ import java.lang.reflect.Method;
 public class ifVTest {
 
 	@Test
+	@Ignore
 	public void ifVTest(){
 		try {
 			String name = "./src/test/resources/ifV.cl";

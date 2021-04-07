@@ -5,13 +5,16 @@ import ru.nsu.fit.javalisp.parser.Parser;
 import ru.nsu.fit.javalisp.translator.LispTransformer;
 
 import java.lang.reflect.Method;
+import java.util.HashMap;
 import java.util.List;
 
 public class Main {
 
+
 	public static void main(String[] args) throws Exception
 	{
 		Parser parser = new LispParser(args[0]);
+
 
 		List<Node> nodeList = parser.parse();
 

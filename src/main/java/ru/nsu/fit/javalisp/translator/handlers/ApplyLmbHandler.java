@@ -1,7 +1,6 @@
 package ru.nsu.fit.javalisp.translator.handlers;
 
 import ru.nsu.fit.javalisp.Node;
-import ru.nsu.fit.javalisp.Pair;
 import ru.nsu.fit.javalisp.translator.Context;
 import ru.nsu.fit.javalisp.translator.FunctionDescriptor;
 import ru.nsu.fit.javalisp.translator.TranslationEntry;
@@ -11,9 +10,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
-public class ApplyLHandler extends BasicHandler {
+public class ApplyLmbHandler extends BasicHandler {
 
-	public ApplyLHandler(HashMap<String, FunctionDescriptor> nameToDesc, HashMap<String, FunctionDescriptor> nameToDummy) {
+	public ApplyLmbHandler(HashMap<String, FunctionDescriptor> nameToDesc, HashMap<String, FunctionDescriptor> nameToDummy) {
 		super(nameToDesc, nameToDummy);
 	}
 
@@ -24,22 +23,15 @@ public class ApplyLHandler extends BasicHandler {
 			return TranslationResult.FAIL;
 		}
 		Node s = node.getSubNodes().get(0);
-		if (s.getType() != Node.Type.VARIABLE) {
+		if (s.getType() != Node.Type.COMPLEX) {
 			return TranslationResult.FAIL;
 		}
 
-		if (!currentContext.containsVar(s.getResult())){
-			return TranslationResult.FAIL;
-		}
+		var t1 = startingHandler.evalNode(currentContext, s, 0, resVar);
 
-		TranslationEntry entry = currentContext.getVar(s.getResult());
+		if (!t1.isSuccess() || t1.getValue() != TranslationResult.Value.FUNCTIONAL) return TranslationResult.FAIL;
 
-		if (entry.getType() != TranslationEntry.Type.FUNCTION) return TranslationResult.FAIL;
-
-		int cnt1 = entry.getArity();
-		List<String> args = entry.getFilledArgs();
-
-		if (args.size() + node.getSubNodes().size() - 1 != cnt1) return TranslationResult.FAIL;
+		if (node.getSubNodes().size() - 1 + t1.getParams().size() != t1.getParamsNumber()) return TranslationResult.FAIL;
 
 		StringBuilder builder = new StringBuilder();
 
@@ -61,14 +53,14 @@ public class ApplyLHandler extends BasicHandler {
 			}
 		}
 
-		for (var x : entry.getFilledArgs()){
+		for (var x : t1.getParams()){
 			vars.add(x);
 		}
 		for (int i = 0; i < src.size(); i++) {
 			builder.append(src.get(i));
 		}
 
-		builder.append(resVar).append(" = ").append(entry.getName()).append("(");
+		builder.append(resVar).append(" = ").append(t1.getFuncName()).append("(");
 		for (int i = 0; i < vars.size(); i++) {
 			builder.append(vars.get(i));
 			if (i + 1 < vars.size()) builder.append(", ");

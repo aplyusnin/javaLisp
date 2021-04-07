@@ -6,8 +6,8 @@ import java.util.HashMap;
  * Context class for variables
  */
 public class Context {
-	private HashMap<String, String> args;
-	private HashMap<String, String> inverse;
+	private HashMap<String, TranslationEntry> args;
+	private HashMap<TranslationEntry, String> inverse;
 
 	public Context(){
 		args = new HashMap<>();
@@ -17,21 +17,21 @@ public class Context {
 	/**
 	 * Add variable to context
 	 * @param argName in-source name
-	 * @param localName in-bytecode name
+	 * @param localName translation-entry
 	 */
-	public void add(String argName, String localName){
+	public void add(String argName, TranslationEntry localName){
 		args.put(argName, localName);
 		inverse.put(localName, argName);
 	}
 
 	/**
-	 * Get variable in-bytecode name
+	 * Get entry by name
  	 * @param arg in-source name
-	 * @return in-bytecode name
+	 * @return translation-entry
 	 */
-	public String getVar(String arg){
+	public TranslationEntry getVar(String arg){
 		if (args.containsKey(arg)) return args.get(arg);
-		return arg;
+		return null;
 	}
 
 	/**
@@ -53,5 +53,16 @@ public class Context {
 
 	public String getInverse(String name){
 		return inverse.get(name);
+	}
+	public HashMap<String, TranslationEntry> getArgs() {
+		return args;
+	}
+
+	@SuppressWarnings("unchecked")
+	public Context clone() throws CloneNotSupportedException {
+		Context clone = new Context();
+		clone.args = (HashMap<String, TranslationEntry>)this.args.clone();
+		clone.inverse = (HashMap<TranslationEntry, String>)this.inverse.clone();
+		return clone;
 	}
 }

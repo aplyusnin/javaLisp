@@ -407,6 +407,15 @@ public class BaseSource {
 		return res;
 	}
 
+	protected String con(String a, Object b){
+		return a.toString() + b.toString();
+	}
+
+
+	protected Boolean empty(Object o){
+		return ((List<Object>)o).size() == 0;
+	}
+
 	public void evaluate(){
 
 	}

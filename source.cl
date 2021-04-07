@@ -1,3 +1,12 @@
+(def inc (fn [x] (+ x 1)))
+
+(def five (fn [] (5)))
+(def six (fn [] (6)))
+
+((fn [x y] (* x y)) (five) (six))
+
+(inc 2)
+
 (def x 10)
 
 (decl f (x acc))
@@ -8,6 +17,17 @@
          (x acc) (f (- x 1) (* acc x)))
 
 (fact 5)
+
+
+(defun reduceSum [l acc] (if (empty? l) acc (reduceSum (tail l) ((fn [y] (+ (+ x y) acc)) (head l)))))
+
+(reduceSum (range 1 10) 0)
+
+(defun reduceSum1
+        [(list) acc] acc
+        [l acc] (reduceSum1 (tail l) ((fn [y] (+ (+ x y) acc)) (head l))))
+
+(reduceSum1 (range 1 10) 0)
 
 (defun sum-square (a b)
        (let ((a2 (* a a))
@@ -29,9 +49,6 @@
 
 (def List (range 1 5))
 
-(map do-fact List)
-
-
 (decl is-odd (x))
 
 (decl is-even (x))
@@ -42,17 +59,13 @@
 
 
 (defun is-odd (0) true
-               (1) false
-               (x) (not (is-even (- x 1))))
+              (1) false
+              (x) (not (is-even (- x 1))))
 
-(map is-even List)
 
 (defun is-good (x)
-       (if (= x 3) true false))
+       (if (or (= x 3) (< x 2)) true false))
 
-(map is-good List)
-
-((reduce + List 0))
 
 (defun acos (x) (@java.lang.Math/acos x))
 

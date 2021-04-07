@@ -5,6 +5,7 @@ import ru.nsu.fit.javalisp.Pair;
 import ru.nsu.fit.javalisp.translator.Context;
 import ru.nsu.fit.javalisp.translator.FunctionDescriptor;
 import ru.nsu.fit.javalisp.translator.JavaInvoker;
+import ru.nsu.fit.javalisp.translator.TranslationResult;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -17,23 +18,22 @@ public class ApplyJHandler extends BasicHandler {
 
 	/**
 	 * Create handler
-	 * @param contexts - list of contexts
 	 * @param nameToDesc - defined functions
 	 * @param nameToDummy - declared functions
 	 */
-	public ApplyJHandler(List<Context> contexts, HashMap<String, FunctionDescriptor> nameToDesc, HashMap<String, FunctionDescriptor> nameToDummy){
-		super(contexts, nameToDesc, nameToDummy);
+	public ApplyJHandler(HashMap<String, FunctionDescriptor> nameToDesc, HashMap<String, FunctionDescriptor> nameToDummy){
+		super(nameToDesc, nameToDummy);
 	}
 
 	@Override
-	protected Pair<Boolean, Pair<String, Integer>> generateSource(Node node, int created, String resVar) throws Exception
+	protected TranslationResult generateSource(Context currentContext, Node node, int created, String resVar) throws Exception
 	{
 		if (node.getType() != Node.Type.COMPLEX){
-			return new Pair<>(Boolean.FALSE, null);
+			return TranslationResult.FAIL;
 		}
 		Node node1 = node.getSubNodes().get(0);
 		if (node1.getType() != Node.Type.JAVACALL){
-			return new Pair<>(Boolean.FALSE, null);
+			return TranslationResult.FAIL;
 		}
 		int args = node.getSubNodes().size() - 1;
 
@@ -52,9 +52,10 @@ public class ApplyJHandler extends BasicHandler {
 			String name = "_LOCAL_VAR_" + (created + cnt);
 			cnt++;
 			vars.add(name);
-			var t1 = startingHandler.evalNode(node.getSubNodes().get(i), created + cnt, name);
-			cnt += t1.second;
-			src.add(t1.first);
+			var t1 = startingHandler.evalNode(currentContext, node.getSubNodes().get(i), created + cnt, name);
+			if (!t1.isSuccess() || t1.getValue() != TranslationResult.Value.SOURCE) return TranslationResult.FAIL;
+			cnt += t1.getUsedVars();
+			src.add(t1.getSrc());
 		}
 
 		StringBuilder builder = new StringBuilder();
@@ -102,7 +103,8 @@ public class ApplyJHandler extends BasicHandler {
 		if (isNew) builder.append(")");
 		builder.append(");}\n");
 
-		return new Pair<>(Boolean.TRUE, new Pair<>(builder.toString(), cnt));
+		return new TranslationResult.Builder().setSuccess(true).setUsedVars(cnt).setSrc(builder.toString()).
+				setValue(TranslationResult.Value.FUNCTIONAL).build();
 	}
 
 }

@@ -4,9 +4,10 @@ import ru.nsu.fit.javalisp.Node;
 import ru.nsu.fit.javalisp.Pair;
 import ru.nsu.fit.javalisp.translator.Context;
 import ru.nsu.fit.javalisp.translator.FunctionDescriptor;
+import ru.nsu.fit.javalisp.translator.TranslationEntry;
+import ru.nsu.fit.javalisp.translator.TranslationResult;
 
 import java.util.HashMap;
-import java.util.List;
 
 
 /**
@@ -16,76 +17,88 @@ public class LetHandler extends BasicHandler {
 
 	/**
 	 * Create handler
-	 * @param contexts - list of contexts
 	 * @param nameToDesc - defined functions
 	 * @param nameToDummy - declared functions
 	 */
 
-	public LetHandler(List<Context> contexts, HashMap<String, FunctionDescriptor> nameToDesc, HashMap<String, FunctionDescriptor> nameToDummy){
-		super(contexts, nameToDesc, nameToDummy);
+	public LetHandler(HashMap<String, FunctionDescriptor> nameToDesc, HashMap<String, FunctionDescriptor> nameToDummy){
+		super(nameToDesc, nameToDummy);
 		keyWord = "let";
 	}
 
 	@Override
-	protected Pair<Boolean, Pair<String, Integer>> generateSource(Node node, int created, String resVar) throws Exception
+	protected TranslationResult generateSource(Context currentContext, Node node, int created, String resVar) throws Exception
 	{
 		if (node.getType() != Node.Type.COMPLEX){
-			return new Pair<>(Boolean.FALSE, null);
+			return TranslationResult.FAIL;
 		}
 		if (node.getSubNodes().size() != 3){
-			return new Pair<>(Boolean.FALSE, null);
+			return TranslationResult.FAIL;
 		}
 		String name = node.getSubNodes().get(0).getResult();
 		if (!name.equals(keyWord)){
-			return new Pair<>(Boolean.FALSE, null);
+			return TranslationResult.FAIL;
 		}
 
 		Node bindings = node.getSubNodes().get(1);
 
 		if (bindings.getType() != Node.Type.COMPLEX){
-			return new Pair<>(Boolean.FALSE, null);
+			return TranslationResult.FAIL;
 		}
 
-		Context context = new Context();
+		Context context = currentContext.clone();
 
-		contexts.add(context);
 		int cnt = 0;
 		StringBuilder src = new StringBuilder();
 		for (var x : bindings.getSubNodes()){
 			if (x.getType() != Node.Type.COMPLEX){
-				contexts.remove(contexts.size() - 1);
-				return new Pair<>(Boolean.FALSE, null);
+				return TranslationResult.FAIL;
 			}
 			if (x.getSubNodes().size() != 2){
-				contexts.remove(contexts.size() - 1);
-				return new Pair<>(Boolean.FALSE, null);
+				return TranslationResult.FAIL;
 			}
 			Node bind = x.getSubNodes().get(0);
 			Node value = x.getSubNodes().get(1);
 			if (bind.getType() != Node.Type.VARIABLE){
-				contexts.remove(contexts.size() - 1);
-				return new Pair<>(Boolean.FALSE, null);
+				return TranslationResult.FAIL;
 			}
 			String bindName = "_LOCAL_VAR_" + (created + cnt);
-			if (context.containsVar(bind.getResult())){
-				contexts.remove(contexts.size() - 1);
-				return new Pair<>(Boolean.FALSE, null);
-			}
+//			if (context.containsVar(bind.getResult())){
+//				contexts.remove(contexts.size() - 1);
+//				return TranslationResult.FAIL;
+//			}
 			cnt++;
-			var t = startingHandler.evalNode(value, created + cnt, bindName);
-			src.append(t.first);
-			cnt += t.second;
-			context.add(bind.getResult(), bindName);
+			var t = startingHandler.evalNode(context, value, created + cnt, bindName);
+			if (!t.isSuccess()) return TranslationResult.FAIL;
+			if (t.getValue() == TranslationResult.Value.SOURCE) {
+				src.append(t.getSrc());
+				cnt += t.getUsedVars();
+				TranslationEntry entry = new TranslationEntry.Builder().setName(bindName).setType(TranslationEntry.Type.VARIABLE).build();
+				context.add(bind.getResult(), entry);
+			}
+			else {
+				cnt--;
+				TranslationEntry.Builder builder = new TranslationEntry.Builder().setName(t.getFuncName()).setArity(t.getParamsNumber()).
+						setType(TranslationEntry.Type.FUNCTION);
+				for (var arg : t.getParams()){
+					builder.addArg(arg);
+				}
+				context.add(bind.getResult(), builder.build());
+			}
 		}
 
 		Node function = node.getSubNodes().get(2);
 
-		var t = startingHandler.evalNode(function, created + cnt, resVar);
+		var t = startingHandler.evalNode(context, function, created + cnt, resVar);
 
-		cnt += t.second;
-		src.append(t.first);
-		contexts.remove(contexts.size() - 1);
-		return new Pair<>(Boolean.TRUE, new Pair<>(src.toString(), cnt));
+		if (!t.isSuccess()) return TranslationResult.FAIL;
+		if (t.getValue() == TranslationResult.Value.SOURCE){
+			cnt += t.getUsedVars();
+			src.append(t.getSrc());
+			return new TranslationResult.Builder().setSuccess(true).setSrc(src.toString())
+					.setValue(TranslationResult.Value.SOURCE).setUsedVars(cnt).build();
+		}
+		return t;
 	}
 
 }

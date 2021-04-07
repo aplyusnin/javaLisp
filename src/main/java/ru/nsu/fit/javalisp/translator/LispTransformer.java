@@ -17,6 +17,8 @@ public class LispTransformer {
 	private BasicHandler lastHandler;
 	private List<Context> contexts;
 
+	private CtClass cc;
+
 	private Context globalContext;
 	private int methods = 0;
 
@@ -25,9 +27,12 @@ public class LispTransformer {
 	private int localVars = 0;
 	private int varsInInit = 0;
 
-	public LispTransformer()
-	{
+	public LispTransformer() throws Exception{
 		pool = ClassPool.getDefault();
+		cc = pool.get("ru.nsu.fit.javalisp.translator.Source");
+		cc.setName("LispSource");
+
+
 		contexts = new ArrayList<>();
 		nameToDesc = new HashMap<>();
 		globalContext = new Context();
@@ -59,19 +64,21 @@ public class LispTransformer {
 		nameToDesc.put("reverse", new FunctionDescriptor("reverse", 1));
 		nameToDesc.put("get", new FunctionDescriptor("get", 2));;
 		nameToDesc.put("concat", new FunctionDescriptor("concat", 2));
-		nameToDesc.put("map", new FunctionDescriptor("map", 2));
-		nameToDesc.put("reduce", new FunctionDescriptor("reduce", 3));
+		nameToDesc.put("con", new FunctionDescriptor("con", 2));
+		nameToDesc.put("empty?", new FunctionDescriptor("empty", 1));
 
 
-		LeafHandler leafHandler = new LeafHandler  (contexts, nameToDesc, nameToDummy);
-		ApplyJHandler  jHandler = new ApplyJHandler(contexts, nameToDesc, nameToDummy);
-		ApplyFHandler  fHandler = new ApplyFHandler(contexts, nameToDesc, nameToDummy);
-		IfHandler     ifHandler = new IfHandler    (contexts, nameToDesc, nameToDummy);
-		WrapHandler wrapHandler = new WrapHandler  (contexts, nameToDesc, nameToDummy);
-		LetHandler   letHandler = new LetHandler   (contexts, nameToDesc, nameToDummy);
-		ApplyVHandler  vHandler = new ApplyVHandler(contexts, nameToDesc, nameToDummy);
-		DoHandler  doHandler = new DoHandler(contexts, nameToDesc, nameToDummy);
-		ApplyLHandler lHandler = new ApplyLHandler(contexts, nameToDesc, nameToDummy);
+		LeafHandler leafHandler = new LeafHandler  (nameToDesc, nameToDummy);
+		ApplyJHandler  jHandler = new ApplyJHandler(nameToDesc, nameToDummy);
+		ApplyFHandler  fHandler = new ApplyFHandler(nameToDesc, nameToDummy);
+		IfHandler     ifHandler = new IfHandler    (nameToDesc, nameToDummy);
+		WrapHandler wrapHandler = new WrapHandler  (nameToDesc, nameToDummy);
+		LetHandler   letHandler = new LetHandler   (nameToDesc, nameToDummy);
+		ApplyVHandler  vHandler = new ApplyVHandler(nameToDesc, nameToDummy);
+		DoHandler     doHandler = new DoHandler    (nameToDesc, nameToDummy);
+		ApplyLHandler lHandler = new ApplyLHandler (nameToDesc, nameToDummy);
+		LambdaHandler lambdaHandler = new LambdaHandler(nameToDesc, nameToDummy, cc, pool);
+		ApplyLmbHandler lmbHandler = new ApplyLmbHandler(nameToDesc, nameToDummy);
 
 
 		jHandler.setStartingHandler(leafHandler);
@@ -82,6 +89,8 @@ public class LispTransformer {
 		vHandler.setStartingHandler(leafHandler);
 		doHandler.setStartingHandler(leafHandler);
 		lHandler.setStartingHandler(leafHandler);
+		lmbHandler.setStartingHandler(leafHandler);
+		lambdaHandler.setStartingHandler(leafHandler);
 
 		leafHandler.setNextHandler(jHandler);
 		jHandler.setNextHandler(letHandler);
@@ -89,13 +98,19 @@ public class LispTransformer {
 		ifHandler.setNextHandler(fHandler);
 		fHandler.setNextHandler(vHandler);
 		vHandler.setNextHandler(doHandler);
-		doHandler.setNextHandler(lHandler);
+		doHandler.setNextHandler(lmbHandler);
+		lmbHandler.setNextHandler(lambdaHandler);
+		lambdaHandler.setNextHandler(lHandler);
 		lHandler.setNextHandler(wrapHandler);
 
 		Context global = new Context();
 		contexts.add(global);
 
 		startingHandler = leafHandler;
+	}
+
+	private boolean isValidSource(TranslationResult result){
+		return result.isSuccess() && result.getValue() == TranslationResult.Value.SOURCE;
 	}
 
 	private String parseArgs(Node args, Context context) throws Exception {
@@ -105,7 +120,8 @@ public class LispTransformer {
 			if (x.getType() != Node.Type.VARIABLE){
 				throw new Exception("Invalid function definition");
 			}
-			context.add(x.getResult(), "$" + id);
+			TranslationEntry entry = new TranslationEntry.Builder().setName("$" + id).setType(TranslationEntry.Type.VARIABLE).build();
+			context.add(x.getResult(), entry);
 			argsv.append("Object ").append(x.getResult());
 			if (id != args.getSubNodes().size()){
 				argsv.append(", ");
@@ -127,11 +143,12 @@ public class LispTransformer {
 		for (var x : args.getSubNodes()){
 			id++;
 			try{
-				var t = startingHandler.evalNode(x, created, var);
-				init.append(t.first);
+				var t = startingHandler.evalNode(context, x, created, var);
+				if (!isValidSource(t)) throw new Exception("Can't build function");
+				init.append(t.getSrc());
 				if (cnt > 0) cond.append(" && ");
 				cond.append("$").append(id).append(".equals(").append(var).append(")");
-				auxVars += t.second;
+				auxVars += t.getUsedVars();
 				var = "_LOCAL_VAR_" + (created + auxVars);
 				cnt++;
 			}
@@ -149,17 +166,30 @@ public class LispTransformer {
 		if (node.getSubNodes().get(1).getType() != Node.Type.VARIABLE) throw new Exception("Invalid variable name");
 		String name = node.getSubNodes().get(1).getResult();
 		String name1 = "_GLOBAL_VAR_" + contexts.get(0).size();
-		if (contexts.get(0).containsVar(name)) throw new Exception("Variable " + name + " is already defined.");
-		CtField field = new CtField(pool.get("java.lang.Object"), name1, cc);
-		cc.addField(field);
-		contexts.get(0).add(name, name1);
-		var t = startingHandler.evalNode(node.getSubNodes().get(2), varsInInit, name1);
-		for (int i = varsInInit; i < varsInInit + t.second; i++){
-			lConstructor.addLocalVariable("_LOCAL_VAR_" + i, pool.get("java.lang.Object"));
-		}
-		varsInInit += t.second;
-		lConstructor.insertAfter(t.first);
+		//if (contexts.get(0).containsVar(name)) throw new Exception("Variable " + name + " is already defined.");
 
+		var t = startingHandler.evalNode(contexts.get(0), node.getSubNodes().get(2), varsInInit, name1);
+		if (!t.isSuccess()) throw new Exception("Can't build");
+		if (t.getValue() == TranslationResult.Value.SOURCE) {
+			CtField field = new CtField(pool.get("java.lang.Object"), name1, cc);
+			cc.addField(field);
+
+			TranslationEntry entry = new TranslationEntry.Builder().setName(name1).setType(TranslationEntry.Type.VARIABLE).build();
+			contexts.get(0).add(name, entry);
+
+			for (int i = varsInInit; i < varsInInit + t.getUsedVars(); i++){
+				lConstructor.addLocalVariable("_LOCAL_VAR_" + i, pool.get("java.lang.Object"));
+			}
+			varsInInit += t.getUsedVars();
+			lConstructor.insertAfter(t.getSrc());
+		}
+		else {
+			TranslationEntry.Builder builder = new TranslationEntry.Builder();
+			builder.setName(t.getFuncName()).setArity(t.getParamsNumber()).setType(TranslationEntry.Type.FUNCTION);
+			for (var x : t.getParams())
+				builder.addArg(x);
+			contexts.get(0).add(name, builder.build());
+		}
 	}
 
 	private void createMethod(Node node, CtClass cc) throws Exception{
@@ -169,16 +199,18 @@ public class LispTransformer {
 		String name = node.getSubNodes().get(1).getResult();
 
 		CtMethod method = null;
-		Context context = new Context();
+		Context context = contexts.get(0).clone();
 		int cnts = node.getSubNodes().size();
 
 		String args = parseArgs(node.getSubNodes().get(cnts - 2), context);
-		contexts.add(context);
+		//contexts.add(context);
+
+		int argc = node.getSubNodes().get(cnts - 2).getSubNodes().size();
 
 
 		if (nameToDesc.containsKey(name)) throw new Exception("Function " + name + " redefinition");
 		if (nameToDummy.containsKey(name)){
-			if (nameToDummy.get(name).getArgsCount() != context.size()) throw new Exception("Invalid function definition");
+			if (nameToDummy.get(name).getArgsCount() != argc) throw new Exception("Invalid function definition");
 			FunctionDescriptor desc = nameToDummy.get(name);
 			nameToDummy.remove(name);
 			method = cc.getDeclaredMethod(desc.getName());
@@ -200,7 +232,7 @@ public class LispTransformer {
 			var x = parseMatched(node.getSubNodes().get(i), cnt, context);
 			cnt += x.second;
 			patternSource.add(x.first.first);
-			if (x.first.second != context.size())
+			if (x.first.second != argc)
 				throw new Exception("Invalid function definition");
 		}
 
@@ -210,26 +242,27 @@ public class LispTransformer {
 		for (int i = 0; i < patternSource.size(); i++){
 			src.append(patternSource.get(i));
 			src.append("{\n");
-			var t = startingHandler.evalNode(node.getSubNodes().get(3 + 2 * i), cnt, result);
-			src.append(t.first);
+			var t = startingHandler.evalNode(context, node.getSubNodes().get(3 + 2 * i), cnt, result);
+			if (!isValidSource(t)) throw new Exception("Can't build function");
+			src.append(t.getSrc());
 			src.append("return ").append(result).append(";\n}\n");
 		}
 
-		var t = startingHandler.evalNode(node.getSubNodes().get(cnts - 1), cnt, result);
+		var t = startingHandler.evalNode(context, node.getSubNodes().get(cnts - 1), cnt, result);
 
-		for (int i = 0; i < cnt + t.second; i++) {
+		for (int i = 0; i < cnt + t.getUsedVars(); i++) {
 			method.addLocalVariable("_LOCAL_VAR_" + i, pool.get("java.lang.Object"));
 		}
 
-		src.append(t.first);
+		src.append(t.getSrc());
 		src.append("{ return ").append(result).append("; }\n");
 
 		//System.out.println(src.toString());
 		method.insertBefore(src.toString());
 
-		contexts.remove(contexts.size() - 1);
-
+		//contexts.remove(contexts.size() - 1);
 	}
+
 
 	private void createDummy(Node node, CtClass cc) throws Exception {
 		if (node.getSubNodes().size() != 3) throw new Exception("Invalid number of params in function declaration");
@@ -291,21 +324,22 @@ public class LispTransformer {
 		catch (Exception e){
 			return false;
 		}
-		contexts.add(context);
+		//contexts.add(context);
+		int argc = node.getSubNodes().get(cnt - 2).getSubNodes().size();
 		for (int i = 2; i + 2 < cnt; i+= 2){
 			try {
 				var x = parseMatched(node.getSubNodes().get(i), 0, context);
-				if (x.first.second != context.size()){
-					contexts.remove(contexts.size() - 1);
+				if (x.first.second != argc){
+					//contexts.remove(contexts.size() - 1);
 					return false;
 				}
 			}
 			catch (Exception e){
-				contexts.remove(contexts.size() - 1);
+		//		contexts.remove(contexts.size() - 1);
 				return false;
 			}
 		}
-		contexts.remove(contexts.size() - 1);
+		//contexts.remove(contexts.size() - 1);
 
 		for (int i = 3; i + 2 < cnt; i+=2){
 			if (containsName(node.getSubNodes().get(i), name)) return false;
@@ -322,15 +356,17 @@ public class LispTransformer {
 		String name = node.getSubNodes().get(1).getResult();
 
 		CtMethod method = null;
-		Context context = new Context();
+		Context context = contexts.get(0).clone();
 		int cnts = node.getSubNodes().size();
 
 		String args = parseArgs(node.getSubNodes().get(cnts - 2), context);
-		contexts.add(context);
+		//contexts.add(context);
+
+		int argc = node.getSubNodes().get(cnts - 2).getSubNodes().size();
 
 		if (nameToDesc.containsKey(name)) throw new Exception("Function " + name + " redefinition");
 		if (nameToDummy.containsKey(name)){
-			if (nameToDummy.get(name).getArgsCount() != context.size()) throw new Exception("Invalid function definition");
+			if (nameToDummy.get(name).getArgsCount() != argc) throw new Exception("Invalid function definition");
 			FunctionDescriptor desc = nameToDummy.get(name);
 			nameToDummy.remove(name);
 			method = cc.getDeclaredMethod(desc.getName());
@@ -353,7 +389,7 @@ public class LispTransformer {
 			var x = parseMatched(node.getSubNodes().get(i), cnt, context);
 			cnt += x.second;
 			patternSource.add(x.first.first);
-			if (x.first.second != context.size())
+			if (x.first.second != argc)
 				throw new Exception("Invalid function definition");
 		}
 
@@ -363,8 +399,9 @@ public class LispTransformer {
 		for (int i = 0; i < patternSource.size(); i++){
 			src.append(patternSource.get(i));
 			src.append("{\n");
-			var t = startingHandler.evalNode(node.getSubNodes().get(3 + 2 * i), cnt, result);
-			src.append(t.first);
+			var t = startingHandler.evalNode(context, node.getSubNodes().get(3 + 2 * i), cnt, result);
+			if (!isValidSource(t)) throw new Exception("Can't build function");
+			src.append(t.getSrc());
 			src.append("return ").append(result).append(";\n}\n");
 		}
 
@@ -374,9 +411,10 @@ public class LispTransformer {
 			Node node1 = node.getSubNodes().get(cnts - 1).getSubNodes().get(i);
 			String result1 = "_LOCAL_VAR_" + cnt;
 			cnt++;
-			var t = startingHandler.evalNode(node1, cnt, result1);
-			cnt += t.second;
-			src.append(t.first);
+			var t = startingHandler.evalNode(context, node1, cnt, result1);
+			if (!t.isSuccess() || t.getValue() != TranslationResult.Value.SOURCE) throw new Exception("Can't build function");
+			cnt += t.getUsedVars();
+			src.append(t.getSrc());
 			vars.add(result1);
 		}
 		for (int i = 0; i < cnt; i++) {
@@ -390,7 +428,7 @@ public class LispTransformer {
 		//System.out.println(src.toString());
 		method.insertBefore(src.toString());
 
-		contexts.remove(contexts.size() - 1);
+		//contexts.remove(contexts.size() - 1);
 	}
 
 	private void processBlock(Node node, CtClass cc) throws Exception{
@@ -415,12 +453,13 @@ public class LispTransformer {
 			String v = "_LOCAL_VAR_" + localVars;
 			lMain.addLocalVariable(v, pool.get("java.lang.Object"));
 			localVars++;
-			var t = startingHandler.evalNode(node, localVars, v);
-			for (int i = localVars; i < localVars + t.second; i++) {
+			var t = startingHandler.evalNode(contexts.get(0), node, localVars, v);
+			if (!t.isSuccess() || t.getValue() != TranslationResult.Value.SOURCE) throw new Exception("Cannot compile");
+			for (int i = localVars; i < localVars + t.getUsedVars(); i++) {
 				lMain.addLocalVariable("_LOCAL_VAR_" + i, pool.get("java.lang.Object"));
 			}
-			localVars += t.second;
-			lMain.insertAfter(t.first);
+			localVars += t.getUsedVars();
+			lMain.insertAfter(t.getSrc());
 			lMain.insertAfter("{System.out.println(" + v + ");}\n");
 
 		}
@@ -436,8 +475,7 @@ public class LispTransformer {
 	{
 		try
 		{
-			CtClass cc = pool.get("ru.nsu.fit.javalisp.translator.Source");
-			cc.setName("LispSource");
+
 
 			lMain = CtNewMethod.make("public void evaluate() throws Exception {\n}", cc);
 			lConstructor = CtNewMethod.make("public void initGlobals() throws Exception{\n}", cc);

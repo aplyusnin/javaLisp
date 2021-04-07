@@ -4,6 +4,7 @@ import ru.nsu.fit.javalisp.Node;
 import ru.nsu.fit.javalisp.Pair;
 import ru.nsu.fit.javalisp.translator.Context;
 import ru.nsu.fit.javalisp.translator.FunctionDescriptor;
+import ru.nsu.fit.javalisp.translator.TranslationResult;
 
 import java.util.HashMap;
 import java.util.List;
@@ -13,7 +14,6 @@ import java.util.List;
  */
 public abstract class BasicHandler {
 
-	protected List<Context> contexts;
 	protected HashMap<String, FunctionDescriptor> nameToDesc;
 	protected HashMap<String, FunctionDescriptor> nameToDummy;
 	protected BasicHandler nextHandler;
@@ -22,13 +22,11 @@ public abstract class BasicHandler {
 
 	/**
 	 * Constructor
-	 * @param contexts - List of contexts. Context with higher index has higher priority
 	 * @param nameToDesc - Table of defined methods. Being looked up after contexts
 	 * @param nameToDummy - Table of declared methods, Being looked up after declared methods
 	 */
-	public BasicHandler(List<Context> contexts, HashMap<String, FunctionDescriptor> nameToDesc, HashMap<String, FunctionDescriptor> nameToDummy){
+	public BasicHandler(HashMap<String, FunctionDescriptor> nameToDesc, HashMap<String, FunctionDescriptor> nameToDummy){
 		this.nameToDesc = nameToDesc;
-		this.contexts = contexts;
 		this.nameToDummy = nameToDummy;
 	}
 
@@ -40,11 +38,11 @@ public abstract class BasicHandler {
 	 * @return Pair of generated source and number of used variables
 	 * @throws Exception - unable to create source
 	 */
-	public Pair<String, Integer> evalNode(Node node, int created, String resVar) throws Exception {
-		var t = generateSource(node, created, resVar);
-		if (t.first) return t.second;
+	public TranslationResult evalNode(Context currentContext, Node node, int created, String resVar) throws Exception {
+		var t = generateSource(currentContext, node, created, resVar);
+		if (t.isSuccess()) return t;
 		try {
-			return nextHandler.evalNode(node, created, resVar);
+			return nextHandler.evalNode(currentContext, node, created, resVar);
 		}
 		catch (Exception e){
 			String res = node.getInfo();
@@ -61,7 +59,7 @@ public abstract class BasicHandler {
 	 * If generate source will return (true, (source, cnt)), otherwise (false, null)
 	 * @throws Exception - unable to build source
 	 */
-	protected abstract Pair<Boolean, Pair<String, Integer>> generateSource(Node node, int created, String resVar) throws Exception;
+	protected abstract TranslationResult generateSource(Context currentContext, Node node, int created, String resVar) throws Exception;
 
 	/**
 	 * Set next handler in chain
